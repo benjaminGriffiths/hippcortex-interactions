@@ -6,7 +6,7 @@ close all
 clc
 
 % define key directory
-home_dir = 'E:\bjg335\projects\sync_desync';
+home_dir = 'E:\bjg335\projects\hippcortex-interactions';
 data_dir = 'Y:\projects\intracranial_sync_desync';
 
 % load contact labels
