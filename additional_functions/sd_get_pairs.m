@@ -30,5 +30,5 @@ end
 %         end
 %     end
 % end
-
-%if isempty(chancmb); error('No pairs found...'); end
+% 
+% %if isempty(chancmb); error('No pairs found...'); end

@@ -6,7 +6,7 @@ close all
 clc
 
 % define key directory
-home_dir = 'E:\bjg335\projects\sync_desync';
+home_dir = 'E:\bjg335\projects\hippcortex-interactions';
 data_dir = 'Y:\projects\intracranial_sync_desync';
 
 % load contact labels
@@ -15,15 +15,15 @@ load([home_dir,'\contact_locations.mat'])
 % add subfunctions
 addpath([home_dir,'\additional_functions'])
 
-% define key parameters
-subj_with_hippo = [1 2 3 4 6 7 8];
+% get number of subjects
+nsubj = numel(dir([data_dir,'\data\preprocessing\pp*']));
 
 %% Get Time-Frequency Spectrum
 % predefine matrix to hold slope values of TF data
 beta = [];
 
 % cycle through every participant
-for subj = subj_with_hippo
+for subj = 1 : nsubj
     
     % load data
     load([data_dir,'\data\preprocessing\pp',num2str(subj),'_data.mat']);
@@ -32,7 +32,8 @@ for subj = subj_with_hippo
     freq = cell(size(data));
 
     % predefine time window of interest based on encoding/retrieval data
-    toi{1} = 3 : 0.025 : 4.5;
+    if subj < 8; toi{1} = 3 : 0.025 : 4.5;
+    else; toi{1} = 2 : 0.025 : 3.5; end
     toi{2} = 0 : 0.025 : 1.5;
     
     % cycle through encoding and retrieval data
@@ -40,7 +41,7 @@ for subj = subj_with_hippo
 
         % calculate time-frequency (only on hippocampal channels and recalled trials)
         cfg            = [];
-        cfg.channel    = data{di}.label(contact_locations.hippo{subj,1});
+        cfg.channel    = data{di}.label(contact_locations.hippo{subj,1}==1);
         cfg.keeptrials = 'yes';
         cfg.method     = 'wavelet';
         cfg.width      = 5;
@@ -57,7 +58,7 @@ for subj = subj_with_hippo
         
         % extract slope beta
         beta(subj,di,1,:) = mean(mean(freq{di,1}.slope(freq{di,1}.trialinfo == 1,:,:),2),1);
-        beta(subj,di,2,:) = mean(mean(freq{di,1}.slope(freq{di,1}.trialinfo == 0,:,:),2),1);
+        beta(subj,di,2,:) = mean(mean(freq{di,1}.slope(freq{di,1}.trialinfo >= 0 & freq{di,1}.trialinfo < 1,:,:),2),1);
         
         % smooth data
         cfg         = [];
@@ -79,6 +80,10 @@ for subj = subj_with_hippo
         cfg.trials      = freq{di,1}.trialinfo == 1;
         cfg.avgoverrpt  = 'yes';
         freq{di,1}      = ft_selectdata(cfg,freq{di,1});
+        
+        % record slope
+        if di == 1; subj_slope = []; end
+        subj_slope(:,:,di) = mean(freq{di,1}.powspctrm,3);
 
         % average over channels and time
         cfg             = [];
@@ -96,9 +101,16 @@ for subj = subj_with_hippo
     
     % save data
     save([data_dir,'\data\res\pp',num2str(subj),'_freq_gamma.mat'],'freq');
+    fprintf('sub-%02.0f complete...\n',subj)
+    
+    % plot channelwise difference
+    figure('name',sprintf('sub-%02.0f',subj)); hold on
+    diff = subj_slope(:,:,1) - subj_slope(:,:,2);
+    plot(freq{1}.freq,diff)
+    legend(data{1}.label(contact_locations.hippo{subj} == 1));
     
     % clear all non-essential variables
-    keep subj_with_hippo home_dir data_dir contact_locations beta
+    keep home_dir data_dir contact_locations beta nsubj
 end
 
 % save slope data
@@ -106,10 +118,10 @@ save([data_dir,'\data\res\slope_betas.mat'],'beta');
 
 %% Get Grand Average
 % pre-define cell to hold group data
-group_freq = cell(max(subj_with_hippo),2,2);
+group_freq = cell(nsubj,2,2);
 
 % cycle through every participant
-for subj = subj_with_hippo
+for subj = 1 : nsubj
     
     % load data
     load([data_dir,'\data\res\pp',num2str(subj),'_freq_gamma.mat'])
@@ -133,9 +145,9 @@ for di = 1 : size(group_freq,3)
     % calculate grand average
     cfg                         = [];
     cfg.keepindividual          = 'yes';
-    grand_encoding{di,1}        = ft_freqgrandaverage(cfg,group_freq{subj_with_hippo,1,di});
+    grand_encoding{di,1}        = ft_freqgrandaverage(cfg,group_freq{:,1,di});
     grand_encoding{di,1}.cfg    = [];
-    grand_retrieval{di,1}       = ft_freqgrandaverage(cfg,group_freq{subj_with_hippo,2,di});
+    grand_retrieval{di,1}       = ft_freqgrandaverage(cfg,group_freq{:,2,di});
     grand_retrieval{di,1}.cfg   = [];    
 end
 
@@ -143,7 +155,7 @@ end
 save([data_dir,'\data\res\grand_freq_gamma.mat'],'grand_encoding','grand_retrieval');
     
 % clear all non-essential variables
-keep home_dir data_dir contact_locations   
+keep home_dir data_dir contact_locations nsubj  
 
 %% Run Inferential Statistics
 % load data
@@ -152,6 +164,7 @@ load([data_dir,'\data\res\grand_freq_gamma.mat'])
 % predefine matrices to house p-values and Cohen's d
 p_fdr	= nan(2,7);
 d       = nan(2,7);
+rng(1);
 
 % cycle through hits and misses
 for di = 1 : numel(grand_encoding)
@@ -166,13 +179,17 @@ for di = 1 : numel(grand_encoding)
     grand_retrieval{di,1}.time         = grand_retrieval{di,1}.freq;
     grand_retrieval{di,1}.freq         = 2;
     
+    % get difference
+    grand_diff = grand_encoding{di,1}.powspctrm - grand_retrieval{di,1}.powspctrm;
+    shadedErrorBar(grand_encoding{di,1}.time,mean(grand_diff),sem(grand_diff))
+    
     % downsample time domain
     cfg                     = [];
     cfg.win_dur             = 10;
     cfg.toi                 = [grand_encoding{di,1}.time(1) grand_encoding{di,1}.time(end)];
     grand_encoding{di,1}    = sd_downsample_freq(cfg,grand_encoding{di,1});
-    grand_retrieval{di,1}   = sd_downsample_freq(cfg,grand_retrieval{di,1});
-
+    grand_retrieval{di,1}   = sd_downsample_freq(cfg,grand_retrieval{di,1});           
+    
     % create design matrix
     design      = [];
     design(1,:) = [1:size(grand_encoding{di,1}.powspctrm,1), 1:size(grand_encoding{di,1}.powspctrm,1)];
@@ -202,10 +219,99 @@ for di = 1 : numel(grand_encoding)
     end
 end
 
+%% Get Peaks
+% load data
+load([data_dir,'\data\res\grand_freq_gamma.mat'])
+load('E:\bjg335\projects\hippcortex-interactions\peak_frequencies.mat')
+
+enc_gamma = nan(nsubj,1);
+ret_gamma = nan(nsubj,1);
+subj_with_hippo = 1 : nsubj;
+
+for subj = 1:nsubj
+        
+    figure; hold on
+
+    % get spectrum
+    spec = grand_encoding{1}.powspctrm(subj,:) - grand_retrieval{1}.powspctrm(subj,:);
+    freq = grand_encoding{1}.freq;
+    spec = spec(freq>=50 & freq <= 95);
+    freq = freq(freq>=50 & freq <= 95);
+    
+    % iterate
+    success = false;
+    itcount = 1;
+    fspec = spec;
+    while ~success
+        
+        % find peaks
+        [val,idx] = findpeaks(fspec);
+        
+        % if not empty
+        if ~isempty(idx)
+            [~,midx] = max(val);
+            idx = idx(midx);
+            enc_gamma(subj_with_hippo(subj),1) = freq(idx);
+            success = true;
+            subplot(1,2,1); hold on
+            plot(freq,fspec)
+            plot(freq(idx),fspec(idx),'o');
+            title(num2str(itcount));
+        else
+            p = polyfit(freq,spec,itcount);
+            f = polyval(p,freq);
+            fspec = spec - f;
+            itcount = itcount + 1;
+        end
+        if itcount > 3
+            success = true;
+        end
+    end
+       
+    % get spectrum
+    spec = grand_retrieval{1}.powspctrm(subj,:) - grand_encoding{1}.powspctrm(subj,:);
+    freq = grand_encoding{1}.freq;
+    spec = spec(freq>=32 & freq <= 50);
+    freq = freq(freq>=32 & freq <= 50);
+    
+    % iterate
+    success = false;
+    itcount = 1;
+    fspec = spec;
+    while ~success
+        
+        % find peaks
+        [val,idx] = findpeaks(fspec);
+        
+        % if not empty
+        if ~isempty(idx)
+            [~,midx] = max(val);
+            idx = idx(midx);
+            ret_gamma(subj_with_hippo(subj),1) = freq(idx);
+            success = true;
+            subplot(1,2,2); hold on
+            plot(freq,fspec)
+            plot(freq(idx),fspec(idx),'o');
+            title(num2str(itcount));
+        else
+            p = polyfit(freq,spec,itcount);
+            f = polyval(p,freq);
+            fspec = spec - f;
+            itcount = itcount + 1;
+        end
+        if itcount > 3
+            success = true;
+        end
+    end
+end
+
+peak_frequencies.enc_gamma = [enc_gamma-5 enc_gamma+5];
+peak_frequencies.ret_gamma = [ret_gamma-5 ret_gamma+5];
+save peak_frequencies peak_frequencies
+
 %% Run Statistical Analysis on Beta Slopes
 % load beta data
 load([data_dir,'\data\res\slope_betas.mat'])
-subj_with_hippo = [1 2 3 4 6 7 8];
 
 % create data
 data_enc = struct('cfg',[],...
@@ -213,13 +319,13 @@ data_enc = struct('cfg',[],...
                   'label',{{'dummy'}},...
                   'time',1,...
                   'dimord','subj_chan_freq_time',...
-                  'powspctrm',mean(beta(subj_with_hippo,1,:,:),4));
+                  'powspctrm',mean(beta(:,1,:,:),4));
 data_ret = struct('cfg',[],...
                   'freq',[1 2],...
                   'label',{{'dummy'}},...
                   'time',1,...
                   'dimord','subj_chan_freq_time',...
-                  'powspctrm',mean(beta(subj_with_hippo,2,:,:),4));
+                  'powspctrm',mean(beta(:,2,:,:),4));
 
 % create design matrix
 design      = [];
@@ -239,4 +345,5 @@ cfg.ivar                = 2;
 cfg.uvar                = 1;
 
 % run statistics
+rng(1);
 stat              = ft_freqstatistics(cfg, data_enc, data_ret);

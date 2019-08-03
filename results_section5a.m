@@ -7,7 +7,7 @@ close all
 clc
 
 % define key directory
-home_dir = 'E:\bjg335\projects\sync_desync';
+home_dir = 'E:\bjg335\projects\hippcortex-interactions';
 data_dir = 'Y:\projects\intracranial_sync_desync';
 
 % load contact labels
@@ -18,9 +18,6 @@ load([home_dir,'\peak_frequencies.mat'])
 
 % add subfunctions
 addpath([home_dir,'\additional_functions'])
-
-% define key parameters
-subj_no = 1:8;
 
 % -------------------------------------------------------------- %
 % --- All decomposition is reused from scripts for section 4 --- %
@@ -38,18 +35,26 @@ d       = nan(2,7);
 for fi = 1 : numel(file_label)
     
     % load data
-    load([data_dir,'\data\power\grand_',file_label{fi},'.mat'])
+    load([data_dir,'\data\power\grand_',file_label{fi},'.mat'],'grand_freq')
 
-    % remove participant 5 (no data)
-    grand_freq{1}.powspctrm = grand_freq{1}.powspctrm([1 2 3 4 6 7 8],:,:,:);
-    grand_freq{2}.powspctrm = grand_freq{2}.powspctrm([1 2 3 4 6 7 8],:,:,:);
+    % cycle through conditions
+    for i = 1 : 2
     
-    % downsample time domain
-    cfg             = [];
-    cfg.win_dur     = 0.2;
-    cfg.toi         = [grand_freq{1}.time(1) grand_freq{1}.time(end)];
-    grand_freq{1}   = sd_downsample_freq(cfg,grand_freq{1});
-    grand_freq{2}   = sd_downsample_freq(cfg,grand_freq{2});
+        % select hippocampus
+        cfg             = [];
+        cfg.channel     = 'hippo';
+        grand_freq{i}   = ft_selectdata(cfg,grand_freq{i});
+
+        % remove participants without hippo
+        idx = all(all(isnan(squeeze(grand_freq{i}.powspctrm)),2),3) == 0;
+        grand_freq{i}.powspctrm = grand_freq{i}.powspctrm(idx,:,:,:);
+
+        % downsample time domain
+        cfg             = [];
+        cfg.win_dur     = 0.2;
+        cfg.toi         = [grand_freq{i}.time(1) grand_freq{i}.time(end)];
+        grand_freq{i}   = sd_downsample_freq(cfg,grand_freq{i});
+    end
     
     % create design matrix
     design      = [];
@@ -67,7 +72,7 @@ for fi = 1 : numel(file_label)
     cfg.ivar                = 2;
     cfg.uvar                = 1;
     
-    % --- test atl alpha/beta desync. --- %
+    % --- test theta --- %
     cfg.frequency           = [3 5];
     cfg.tail                = 1;
     cfg.channel             = 'hippo';
@@ -78,8 +83,8 @@ for fi = 1 : numel(file_label)
     
     % calculate cohen's d
     for t = 1 : numel(grand_freq{1}.time)
-        d(fi,t)           = computeCohen_d(squeeze(grand_freq{1}.powspctrm(:,1,2,t)),...
-                                           squeeze(grand_freq{2}.powspctrm(:,1,2,t)),'paired');
+        d(fi,t)           = computeCohen_d(squeeze(grand_freq{1}.powspctrm(:,1,1,t)),...
+                                           squeeze(grand_freq{2}.powspctrm(:,1,1,t)),'paired');
     end
 end
 

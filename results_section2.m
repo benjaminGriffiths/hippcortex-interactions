@@ -7,7 +7,7 @@ close all
 clc
 
 % define key directory
-home_dir = 'E:\bjg335\projects\sync_desync';
+home_dir = 'E:\bjg335\projects\hippcortex-interactions';
 data_dir = 'Y:\projects\intracranial_sync_desync';
 
 % load contact labels
@@ -16,8 +16,8 @@ load([home_dir,'\contact_locations.mat'])
 % add subfunctions
 addpath([home_dir,'\additional_functions'])
 
-% define key parameters
-n_subj = 8;
+% get number of subjects
+n_subj = numel(dir([data_dir,'\data\preprocessing\pp*']));
 
 %% Get Time-Frequency Spectrum
 % cycle through every participant
@@ -30,7 +30,8 @@ for subj = 1 : n_subj
     freq = cell(size(data));
     
     % predefine time window of interest based on encoding/retrieval data
-    toi{1} = 3 : 0.025 : 4.5;
+    if subj < 8; toi{1} = 3 : 0.025 : 4.5;
+    else; toi{1} = 2 : 0.025 : 3.5; end
     toi{2} = 0 : 0.025 : 1.5;
     
     % cycle through encoding and retrieval data
@@ -43,7 +44,7 @@ for subj = 1 : n_subj
         cfg.width      = 5;
         cfg.output     = 'pow';	
         cfg.pad        = 'nextpow2';
-        cfg.foi        = 1 : 0.5 : 100;          
+        cfg.foi        = 1.5 : 0.5 : 100;          
         cfg.toi        = toi{di};
         freq{di}       = ft_freqanalysis(cfg, data{di});
 
@@ -60,7 +61,7 @@ for subj = 1 : n_subj
         
         % rename time bins for consistency between encoding and retrieval
         freq{di}.time = linspace(0,1,numel(freq{di}.time));
-        freq{di}.freq = linspace(round(freq{di}.freq(1)),round(freq{di}.freq(end)),numel(freq{di}.freq));
+        freq{di}.freq = linspace(1.5,100,numel(freq{di}.freq));
     end
     
     % tidy up
@@ -69,14 +70,22 @@ for subj = 1 : n_subj
     % concatenate over trials
     cfg            	= [];
     cfg.parameter  	= 'powspctrm';
+    cfg.appenddim   = 'rpt';
     freqtmp      	= ft_appendfreq(cfg,freq{:});
+    
+    % plot channels
+    pow = squeeze(mean(mean(freqtmp.powspctrm,4),1));
+    figure('name',sprintf('sub-%02.0f',subj)); hold on
+    subplot(3,1,1); hold on; plot(freqtmp.freq,pow(contact_locations.hippo{subj,1}==1,:)); set(gca,'xscale','log'); legend(freqtmp.label(contact_locations.hippo{subj,1}==1),'location','northeastoutside')
+    subplot(3,1,2); hold on; plot(freqtmp.freq,pow(contact_locations.atl{subj,1}==1,:)); set(gca,'xscale','log'); legend(freqtmp.label(contact_locations.atl{subj,1}==1),'location','northeastoutside')
+    subplot(3,1,3); hold on; plot(freqtmp.freq,pow(contact_locations.nc{subj,1}==1,:)); set(gca,'xscale','log'); legend(freqtmp.label(contact_locations.nc{subj,1}==1),'location','northeastoutside')
     
     % select hippocampus (averaging over contacts, trials and time)
     cfg             = [];
     cfg.avgovertime	= 'yes';
     cfg.avgoverrpt	= 'yes';
     cfg.avgoverchan = 'yes';
-    cfg.channel     = freqtmp.label(contact_locations.hippo{subj,1});
+    cfg.channel     = freqtmp.label(find(contact_locations.hippo{subj,1}));
     freq_roi{1,1}   = ft_selectdata(cfg,freqtmp);
     
     % select ATL (averaging over contacts, trials and time)
@@ -84,7 +93,7 @@ for subj = 1 : n_subj
     cfg.avgovertime	= 'yes';
     cfg.avgoverrpt	= 'yes';
     cfg.avgoverchan = 'yes';
-    cfg.channel     = freqtmp.label(contact_locations.atl{subj,1});
+    cfg.channel     = freqtmp.label(find(contact_locations.atl{subj,1}));
     freq_roi{2,1}   = ft_selectdata(cfg,freqtmp);
     
     % select PTPR (averaging over contacts, trials and time)
@@ -92,11 +101,12 @@ for subj = 1 : n_subj
     cfg.avgovertime	= 'yes';
     cfg.avgoverrpt	= 'yes';
     cfg.avgoverchan = 'yes';
-    cfg.channel     = freqtmp.label(contact_locations.nc{subj,1});
+    cfg.channel     = freqtmp.label(find(contact_locations.nc{subj,1}));
     freq_roi{3,1}   = ft_selectdata(cfg,freqtmp);
     
     % save data
     save([data_dir,'\data\res\pp',num2str(subj),'_freq_roi.mat'],'freq_roi');
+    fprintf('sub-%02.0f',subj)
     
     % clear all non-essential variables
     keep n_subj home_dir data_dir contact_locations
@@ -145,5 +155,101 @@ end
 % save data
 save([data_dir,'\data\res\grand_freq_roi.mat'],'grand_roi');
     
-% clear all non-essential variables
-keep home_dir para
+%% Plot
+figure(); hold on
+colmap = [0.8 0.3 0.3; 0.3 0.3 0.8; 0.3 0.8 0.3];
+for i = 1 : 3
+    x = grand_roi{i}.freq(:,2:end);
+    y = squeeze(grand_roi{i}.powspctrm(:,2:end));
+    idx = ~any(isnan(y'));
+    shadedErrorBar(x,mean(y(idx,:)),sem(y(idx,:)),{'color',colmap(i,:)},1);
+end
+ylabel('Power (a.u.)'); xlabel('Frequency (Hz)')
+xlim([x(1) x(end)])
+set(gca,'box','off','tickdir','out','xscale','log',...
+    'xtick',[2:2:10 20:20:100]);
+
+%% Get Peaks
+theta = nan(n_subj,1);
+alpha = nan(n_subj,1);
+
+for subj = 1 : n_subj
+        
+        figure; hold on
+
+    % get spectrum
+    spec = grand_roi{1}.powspctrm(subj,:);
+    freq = grand_roi{1}.freq;
+    spec = spec(freq>=1.5 & freq <= 7);
+    freq = freq(freq>=1.5 & freq<=7);
+    
+    % iterate
+    success = false;
+    itcount = 1;
+    fspec = spec;
+    while ~success
+        
+        % find peaks
+        [val,idx] = findpeaks(fspec);
+        
+        % if not empty
+        if ~isempty(idx)
+            [~,midx] = max(val);
+            idx = idx(midx);
+            theta(subj,1) = freq(idx);
+            success = true;
+            subplot(1,2,1); hold on
+            plot(freq,fspec)
+            plot(freq(idx),fspec(idx),'o');
+            title(num2str(itcount));
+        else
+            p = polyfit(freq,spec,itcount);
+            f = polyval(p,freq);
+            fspec = spec - f;
+            itcount = itcount + 1;
+        end
+        if itcount > 3
+            success = true;
+        end
+    end
+    
+    % get spectrum
+    spec = grand_roi{2}.powspctrm(subj,:);
+    freq = grand_roi{2}.freq;
+    spec = spec(freq>=7 & freq <= 15);
+    freq = freq(freq>=7 & freq<=15);
+    
+    % iterate
+    success = false;
+    itcount = 1;
+    fspec = spec;
+    while ~success
+        
+        % find peaks
+        [val,idx] = findpeaks(fspec);
+        
+        % if not empty
+        if ~isempty(idx)
+            [~,midx] = max(val);
+            idx = idx(midx);
+            alpha(subj,1) = freq(idx);
+            success = true;
+            subplot(1,2,2); hold on
+            plot(freq,fspec)
+            plot(freq(idx),fspec(idx),'o');
+            title(num2str(itcount));
+        else
+            p = polyfit(freq,spec,itcount);
+            f = polyval(p,freq);
+            fspec = spec - f;
+            itcount = itcount + 1;
+        end
+        if itcount > 3
+            success = true;
+        end
+    end
+end
+
+peak_frequencies.theta = [theta-0.5 theta+0.5];
+peak_frequencies.alpha = [alpha-1 alpha+5];
+save peak_frequencies peak_frequencies

@@ -19,22 +19,23 @@ load([home_dir,'\peak_frequencies.mat'])
 addpath([home_dir,'\additional_functions'])
 
 % define key parameters
-subj_no     = [1 2 3 4 6 7 8];
+nsubj = numel(dir([data_dir,'\data\preprocessing\pp*']));
 
 %% Get Time-Frequency Spectrum
 % cycle through every participant
-for subj = subj_no
+for subj = 1 : nsubj
     
     % load data
     load([data_dir,'\data\preprocessing\pp',num2str(subj),'_data.mat']);
     
     % pre-define cell for peak time-frequency data
     freq_peak = cell(3,numel(data));
-    
+        
     % predefine time window of interest based on encoding/retrieval data
-    toi{1} = 3.5 : 0.01 : 4.5;
-    toi{2} = 0.5 : 0.01 : 1.5;
-    
+    if subj < 8; toi{1} = 3.5 : 0.01 : 4.5;
+    else; toi{1} = 2.5 : 0.01 : 3.5; end
+    toi{2} = 0.5 : 0.01 : 1.5;    
+        
     % cycle through encoding and retrieval data
     for di = 1 : numel(data)
     
@@ -45,7 +46,7 @@ for subj = subj_no
         cfg.width       = 5; 
         cfg.output      = 'pow';	
         cfg.pad         = 'nextpow2';
-        cfg.foi         = 1:0.5:100;          
+        cfg.foi         = 1.5:0.5:100;          
         cfg.toi         = toi{di};
         freq            = ft_freqanalysis(cfg, data{di});
 
@@ -62,64 +63,61 @@ for subj = subj_no
         
         % convert power spectrum to single to reduce RAM load
         freq.powspctrm = single(freq.powspctrm);
+        freq = rmfield(freq,'slope');
  
         % define ATL alpha
         cfg                     = [];
         cfg.frequency           = peak_frequencies.alpha(subj,:);
-        cfg.channel             = freq.label(contact_locations.atl{subj,:});
+        cfg.channel             = freq.label(contact_locations.atl{subj,:}==1);
         cfg.avgoverfreq         = 'yes';
         freq_peak{1,di}         = ft_selectdata(cfg,freq);
         freq_peak{1,di}.freq    = 10;
 
-        % define PTPR alpha
-        cfg                     = [];
-        cfg.frequency           = peak_frequencies.alpha(subj,:);
-        cfg.channel             = freq.label(contact_locations.nc{subj,:});
-        cfg.avgoverfreq         = 'yes';
-        freq_peak{2,di}         = ft_selectdata(cfg,freq);
-        freq_peak{2,di}.freq    = 10;
-
         % define hippocampal theta
         cfg                     = [];
         cfg.frequency           = peak_frequencies.theta(subj,:);
-        cfg.channel             = freq.label(contact_locations.hippo{subj,:});
+        cfg.channel             = freq.label(contact_locations.hippo{subj,:}==1);
         cfg.avgoverfreq         = 'yes';
         tmp{1,1}                = ft_selectdata(cfg,freq);
         tmp{1,1}.freq           = 4;
 
         % define hippocampal encoding gamma
         cfg                     = [];
-        cfg.frequency           = peak_frequencies.enc_gamma(subj,:);
-        cfg.channel             = freq.label(contact_locations.hippo{subj,:});
+        cfg.frequency           = peak_frequencies.ret_gamma(subj,:);
+        cfg.channel             = freq.label(contact_locations.hippo{subj,:}==1);
         cfg.avgoverfreq         = 'yes';
         tmp{2,1}                = ft_selectdata(cfg,freq);
-        tmp{2,1}.freq           = 60;
+        tmp{2,1}.freq           = 45;
 
         % define hippocampal retrieval gamma
         cfg                     = [];
-        cfg.frequency           = peak_frequencies.ret_gamma(subj,:);
-        cfg.channel             = freq.label(contact_locations.hippo{subj,:});
+        cfg.frequency           = peak_frequencies.enc_gamma(subj,:);
+        cfg.channel             = freq.label(contact_locations.hippo{subj,:}==1);
         cfg.avgoverfreq         = 'yes';
         tmp{3,1}                = ft_selectdata(cfg,freq);
-        tmp{3,1}.freq           = 45;
+        tmp{3,1}.freq           = 60;
     
         % concatenate hippocampal data across frequencies
         cfg                     = [];
         cfg.parameter           = 'powspctrm';
         cfg.appenddim           = 'freq';
-        freq_peak{3,di}         = ft_appendfreq(cfg, tmp{:});
+        freq_peak{2,di}         = ft_appendfreq(cfg, tmp{:});
     end
     
     % save data
     save([data_dir,'\data\xc\pp',num2str(subj),'_freq_peak.mat'],'freq_peak');
     
     % clear all non-essential variables
-    keep contact_locations data_dir home_dir peak_frequencies subj_no
+    fprintf('sub-%02.0f complete...\n',subj)
+    keep contact_locations data_dir home_dir peak_frequencies nsubj
 end
     
 %% Calculate Cross-Correlation
+% predefine bad participant
+bad_pp = false(nsubj,1);
+
 % cycle through every participant
-for subj = subj_no
+for subj = 1 : nsubj
     
     % load data
     load([data_dir,'\data\xc\pp',num2str(subj),'_freq_peak.mat'])
@@ -136,66 +134,64 @@ for subj = subj_no
         
         % create cross-correlation data structure
         freq_xc{di} = struct('cfg',[],...
-                         'freq',[4 60 45],...
+                         'freq',[4 45 60],...
                          'time',linspace(-xc_lag.*xc_tD,xc_lag.*xc_tD,xc_lag.*2+1),...
-                         'label',{{'atl_hipp','ptl_hipp'}},...
-                         'powspctrm',nan(size(freq_peak{1,di}.powspctrm,1),2,3,xc_lag.*2+1),...
+                         'label',{{'atl_hipp'}},...
+                         'powspctrm',nan(size(freq_peak{1,di}.powspctrm,1),1,3,xc_lag.*2+1),...
                          'dimord','rpt_chan_freq_time',...
                          'trialinfo',freq_peak{1,di}.trialinfo);
-        
-        % cycle through NC ROI
-        for ri = 1 : numel(freq_xc{di}.label)
-            
-            % determine ATL-Hippo. contact pairs
-            chancmb = sd_get_pairs(freq_peak{ri,di},freq_peak{3,di});
 
-            % pre-define matrix for cross-correlation
-            XC_tmp = nan(size(freq_peak{ri,di}.powspctrm,1),size(chancmb,1),numel(freq_peak{ri,di}.freq),xc_lag.*2+1);
+        % determine ATL-Hippo. contact pairs
+        chancmb = sd_get_pairs(freq_peak{1,di},freq_peak{2,di});
+        if isempty(chancmb); bad_pp(subj) = true; continue; end
 
-            % cycle through each trial
-            for trial = 1 : size(freq_peak{ri,di}.powspctrm,1)
+        % pre-define matrix for cross-correlation
+        XC_tmp = nan(size(freq_peak{1,di}.powspctrm,1),size(chancmb,1),numel(freq_peak{1,di}.freq),xc_lag.*2+1);
 
-                % cycle through each channel combination
-                for chan = 1 : size(chancmb,1)
+        % cycle through each trial
+        for trial = 1 : size(freq_peak{1,di}.powspctrm,1)
 
-                    % extract NC and hippocampal time-series
-                    signal_A = squeeze(freq_peak{ri,di}.powspctrm(trial,chancmb(chan,1),:,:));
-                    signal_B = squeeze(freq_peak{3,di}.powspctrm(trial,chancmb(chan,2),:,:));
+            % cycle through each channel combination
+            for chan = 1 : size(chancmb,1)
 
-                    % rotate to trls_freqs if necessary
-                    if size(signal_B,1) < size(signal_B,2); signal_B = signal_B'; end
-                    
-                    % cycle through each hippocampal frequency
-                    for freq = 1 : size(signal_B,2)
+                % extract NC and hippocampal time-series
+                signal_A = squeeze(freq_peak{1,di}.powspctrm(trial,chancmb(chan,1),:,:));
+                signal_B = squeeze(freq_peak{2,di}.powspctrm(trial,chancmb(chan,2),:,:));
 
-                        % calculate XC (using atanh to normalise Pearson's coefficent)
-                        XC_tmp(trial,chan,freq,:) = atanh(crosscorr(signal_B(:,freq),signal_A,xc_lag));
+                % rotate to trls_freqs if necessary
+                if size(signal_B,1) < size(signal_B,2); signal_B = signal_B'; end
 
-                    end
+                % cycle through each hippocampal frequency
+                for freq = 1 : size(signal_B,2)
+
+                    % calculate XC (using atanh to normalise Pearson's coefficent)
+                    XC_tmp(trial,chan,freq,:) = atanh(crosscorr(signal_B(:,freq),signal_A,xc_lag));
+
                 end
             end
-
-            % average XC values over contact combinations and add to structure
-            freq_xc{di}.powspctrm(:,ri,:,:) = mean(XC_tmp,2);
-
         end
+
+        % average XC values over contact combinations and add to structure
+        freq_xc{di}.powspctrm(:,1,:,:) = mean(XC_tmp,2);
+
     end
     
     % update command line
-    fprintf('Subject %d cross-correlation complete...\n',subj)
+    fprintf('sub_%02.0f cross-correlation complete...\n',subj)
     
     % save data
     save([data_dir,'\data\xc\pp',num2str(subj),'_freq_xc.mat'],'freq_xc')
     
     % clear all non-essential variables
-    keep contact_locations data_dir home_dir peak_frequencies subj_no
+    keep contact_locations data_dir home_dir peak_frequencies nsubj bad_pp
 end
 
 %% Create Memory Contrast
 % cycle through every participant
-for subj = subj_no
+for subj = 1 : nsubj
     
     % load data
+    if bad_pp(subj); continue; end
     load([data_dir,'\data\xc\pp',num2str(subj),'_freq_xc.mat'])
      
     % predefine cell for freq data
@@ -224,18 +220,19 @@ for subj = subj_no
     save([data_dir,'\data\xc\pp',num2str(subj),'_freq_sme.mat'],'freq_hits','freq_misses')
     
     % clear all non-essential variables
-    keep contact_locations data_dir home_dir peak_frequencies subj_no
+    keep contact_locations data_dir home_dir peak_frequencies nsubj bad_pp
 end
 
 %% Calculate Group Averages
 % create group cell
-group_hits      = cell(max(subj_no),2);
-group_misses    = cell(max(subj_no),2);
+group_hits      = cell(nsubj,2);
+group_misses    = cell(nsubj,2);
 
 % cycle through each participant
-for subj = subj_no
+for subj = 1 : nsubj
     
     % load data
+    if bad_pp(subj); continue; end    
     load([data_dir,'\data\xc\pp',num2str(subj),'_freq_sme.mat']);
     
     % cycle through encoding and retrieval data
@@ -251,15 +248,15 @@ grand_misses        = cell(2,1);
 cfg                 = [];
 cfg.keepindividual  = 'yes';
 for di = 1 : size(group_hits,2)
-    grand_hits{di,1}    = ft_freqgrandaverage(cfg,group_hits{subj_no,di});
-    grand_misses{di,1}  = ft_freqgrandaverage(cfg,group_misses{subj_no,di});
+    grand_hits{di,1}    = ft_freqgrandaverage(cfg,group_hits{~bad_pp,di});
+    grand_misses{di,1}  = ft_freqgrandaverage(cfg,group_misses{~bad_pp,di});
 end
 
 % save
 save([data_dir,'\data\xc\grand_freq.mat'],'grand_hits','grand_misses')
       
 % clear all non-essential variables
-keep contact_locations data_dir home_dir peak_frequencies subj_no
+keep contact_locations data_dir home_dir peak_frequencies nsubj
 
 %% Run Inferential Statistics
 % load data
@@ -282,6 +279,9 @@ for di = 1 : numel(grand_hits)
     grand_hits{di}      = sd_downsample_freq(cfg,grand_hits{di});
     grand_misses{di}    = sd_downsample_freq(cfg,grand_misses{di});
     
+    diff = squeeze(grand_hits{di}.powspctrm(:,:,3,:) - grand_misses{di}.powspctrm(:,:,3,:));
+    plot(grand_hits{di}.time,diff)
+    
     % create design matrix
     design      = [];
     design(1,:) = [1:size(grand_hits{di}.powspctrm,1), 1:size(grand_hits{di}.powspctrm,1)];
@@ -297,7 +297,6 @@ for di = 1 : numel(grand_hits)
     cfg.design              = design;
     cfg.ivar                = 2;
     cfg.uvar                = 1;
-    cfg.tail                = -1;
        
     % --- test alpha/gamma correlation --- %
     cfg.channel             = 'atl_hipp';
@@ -309,8 +308,8 @@ for di = 1 : numel(grand_hits)
     
     % extract cohen's d
     for t = 1 : size(stat.stat,3)
-        d(di,t) = computeCohen_d(squeeze(grand_hits{di}.powspctrm(:,1,3,t)),...
-                              squeeze(grand_misses{di}.powspctrm(:,1,3,t)),'paired');
+        d(di,t) = computeCohen_d(squeeze(grand_hits{di}.powspctrm(:,1,2,t)),...
+                              squeeze(grand_misses{di}.powspctrm(:,1,2,t)),'paired');
     end   
     
     % calculate number of electrodes showing effect
@@ -325,7 +324,7 @@ end
 save([data_dir,'\data\xc\stat_hitMissContrast.mat'],'p','d','percent_trending')
 
 % clear all non-essential variables
-keep contact_locations data_dir home_dir peak_frequencies subj_no
+keep contact_locations data_dir home_dir peak_frequencies nsubj
 
 %% Contrast 60Hz Encoding with 45Hz Retrieval
 % load data
@@ -395,7 +394,7 @@ percent_trending(2,1) = sum((grand_freq{1}.powspctrm(:,1,1,6) - grand_freq{2}.po
 save([data_dir,'\data\xc\stat_encRetContrast.mat'],'p','d','percent_trending')
 
 % clear all non-essential variables
-keep contact_locations data_dir home_dir peak_frequencies subj_no
+keep contact_locations data_dir home_dir peak_frequencies nsubj
 
 %% Run Random Effects ANOVA
 % predefine vectors for ANOVA analysis
@@ -427,7 +426,7 @@ end
 time_idx = [2 6];
 
 % cycle through each participant
-for subj = 1 : numel(subj_no)
+for subj = 1 : size(grand_diff{di}.powspctrm,1);
 
     % cycle through both data types
     for di = 1 : numel(grand_hits)

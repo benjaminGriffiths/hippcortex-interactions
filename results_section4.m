@@ -7,7 +7,7 @@ close all
 clc
 
 % define key directory
-home_dir = 'E:\bjg335\projects\sync_desync';
+home_dir = 'E:\bjg335\projects\hippcortex-interactions';
 data_dir = 'Y:\projects\intracranial_sync_desync';
 
 % load contact labels
@@ -19,21 +19,22 @@ load([home_dir,'\peak_frequencies.mat'])
 % add subfunctions
 addpath([home_dir,'\additional_functions'])
 
-% define key parameters
-subj_no = 1:8;
+% get number of subjects
+nsubj = numel(dir([data_dir,'\data\preprocessing\pp*']));
 
 %% Get Time-Frequency Data
 % cycle through every participant
-for subj = subj_no
+for subj = 1 : nsubj
     
     % load data
-    load([data_dir,'\data\preprocessing\pp',num2str(subj),'_data.mat']);
+    load([data_dir,'\data\preprocessing\pp',num2str(subj),'_data.mat'],'data');
     
     % pre-define cell for time-frequency data
     freq = cell(size(data));
     
     % predefine time window of interest based on encoding/retrieval data
-    toi{1} = 3 : 0.025 : 4.5;
+    if subj < 8; toi{1} = 3 : 0.025 : 4.5;
+    else; toi{1} = 2 : 0.025 : 3.5; end
     toi{2} = 0 : 0.025 : 1.5;
     
     % cycle through encoding and retrieval data
@@ -47,7 +48,7 @@ for subj = subj_no
         cfg.width      = 5; 
         cfg.output     = 'pow';	
         cfg.pad        = 'nextpow2';
-        cfg.foi        = 1 : 0.5 : 100;          
+        cfg.foi        = 1.5 : 0.5 : 100;          
         cfg.toi        = toi{di};
         freq           = ft_freqanalysis(cfg, data{di});
 
@@ -83,7 +84,7 @@ for subj = subj_no
         
         % --- split into peak frequencies --- %
         % define frequency fields
-        freq_field = fieldnames(peak_frequencies);
+        freq_field = {'theta','alpha','ret_gamma','enc_gamma'};
         
         % define temporary cell for frequency data
         tmp = cell(numel(freq_field),numel(freqtmp));
@@ -123,9 +124,25 @@ for subj = subj_no
             freqtmp{hi}     = ft_appendfreq(cfg,tmp{:,hi});
 
             % re-value frequencies for consistency across participants
-            freqtmp{hi}.freq   = [4 10 60 45];
+            freqtmp{hi}.freq   = [4 10 45 60];
         end  
                
+%         % plot difference
+%         chan_field = fieldnames(contact_locations);
+%         diff = freqtmp{1}.powspctrm-freqtmp{2}.powspctrm;
+%         t = freqtmp{1}.time;
+%         for j = 1 : 3
+%             figure('position',[100 100 1000 400],'name',sprintf('sub%02.0f - %s [di:%d]',subj,chan_field{j},di)); hold on
+%             for i = 1 : 4
+%                 subplot(2,2,i); hold on
+%                 title(num2str(freqtmp{1}.freq(i)));
+%                 plot(t,squeeze(diff(contact_locations.(chan_field{j}){subj,1}==1,i,:)));
+%                 plot(t,mean(squeeze(diff(contact_locations.(chan_field{j}){subj,1}==1,i,:)),1),'k--');
+%                 plot(t,zeros(size(t)),'k-')
+%                 legend(freqtmp{1}.label(contact_locations.(chan_field{j}){subj,1}==1),'location','northeastoutside')
+%             end
+%         end
+                
         % --- split by channels --- %
         % define roi fields
         chan_field = fieldnames(contact_locations);
@@ -141,19 +158,27 @@ for subj = subj_no
 
                 % select frequencies between sidebands define in [para] and average
                 cfg             = [];
-                cfg.channel     = freqtmp{hi}.label(contact_locations.(chan_field{ci}){subj,1});
+                cfg.channel     = freqtmp{hi}.label(contact_locations.(chan_field{ci}){subj,1}==1);
                 cfg.avgoverchan = 'yes';
                 tmp{ci,hi}      = ft_selectdata(cfg, freqtmp{hi});
             end
             
             % append channels
             cfg             = [];
-            cfg.parameter   = 'powspctrm';
             cfg.appenddim   = 'chan';
+            cfg.parameter   = 'powspctrm';
             freqtmp{hi}     = ft_appendfreq(cfg,tmp{:,hi});
 
+            % append data
+            pow = [];
+            pow(1,:,:) = tmp{1,hi}.powspctrm;
+            pow(2,:,:) = tmp{2,hi}.powspctrm;
+            pow(3,:,:) = tmp{3,hi}.powspctrm;
+            
             % re-value frequencies for consistency across participants
+            freqtmp{hi}.powspctrm = pow;
             freqtmp{hi}.label = chan_field;
+            freqtmp{hi}.time = linspace(0,1.5,numel(freqtmp{hi}.time));
             freqtmp{hi}.cfg   = [];
         end   
         
@@ -167,7 +192,7 @@ for subj = subj_no
         end
 
         % clear all non-essential variables
-        keep home_dir data_dir peak_frequencies contact_locations subj_no subj toi data
+        keep home_dir data_dir peak_frequencies contact_locations nsubj subj toi data
     end   
     
     % clear subject data
@@ -182,10 +207,10 @@ file_label = {'encoding','retrieval'};
 for fi = 1 : numel(file_label)
 
     % create group cell
-    group_freq = cell(max(subj_no),2);
+    group_freq = cell(10,2);
 
     % cycle through each participant
-    for subj = subj_no
+    for subj = 1 : nsubj
 
         % load data
         load([data_dir,'\data\power\pp',num2str(subj),'_freq_',file_label{fi},'.mat']);
@@ -200,7 +225,7 @@ for fi = 1 : numel(file_label)
     cfg                 = [];
     cfg.keepindividual  = 'yes';
     for di = 1 : size(group_freq,2)
-        grand_freq{di,1} = ft_freqgrandaverage(cfg,group_freq{subj_no,di});
+        grand_freq{di,1} = ft_freqgrandaverage(cfg,group_freq{:,di});
         grand_freq{di,1}.cfg = [];
     end
 
@@ -208,7 +233,7 @@ for fi = 1 : numel(file_label)
     save([data_dir,'\data\power\grand_',file_label{fi},'.mat'],'grand_freq')
 
     % clear all non-essential variables
-    keep home_dir data_dir peak_frequencies contact_locations subj_no file_label
+    keep home_dir data_dir peak_frequencies contact_locations subj_no file_label good_pp
 end
 
 %% Run Inferential Statistics
@@ -216,8 +241,8 @@ end
 file_label = {'encoding','retrieval'};
 
 % create stat cell
-p_fdr	= nan(2,2,7);
-d       = nan(2,2,7);
+p_fdr	= nan(2,7);
+d       = nan(2,7);
 
 % cycle through each file label
 for fi = 1 : numel(file_label)
@@ -232,6 +257,13 @@ for fi = 1 : numel(file_label)
     grand_freq{1}   = sd_downsample_freq(cfg,grand_freq{1});
     grand_freq{2}   = sd_downsample_freq(cfg,grand_freq{2});
     
+    % select alpha/beta atl
+    cfg = [];
+    cfg.frequency = [9 11];
+    cfg.channel = 'atl';
+    grand_freq{1} = ft_selectdata(cfg,grand_freq{1});
+    grand_freq{2} = ft_selectdata(cfg,grand_freq{2});
+       
     % create design matrix
     design      = [];
     design(1,:) = [1:size(grand_freq{1}.powspctrm,1), 1:size(grand_freq{1}.powspctrm,1)];
@@ -255,28 +287,13 @@ for fi = 1 : numel(file_label)
     stat                    = ft_freqstatistics(cfg,grand_freq{1},grand_freq{2});
       
     % extract fdr corrected p-value
-    [~,~,p_fdr(fi,1,:)] = fdr(squeeze(stat.prob));
+    [~,~,p_fdr(fi,:)] = fdr(squeeze(stat.prob));
     
     % calculate cohen's d
     for t = 1 : numel(grand_freq{1}.time)
-        d(fi,1,t)           = computeCohen_d(squeeze(grand_freq{1}.powspctrm(:,1,2,t)),...
-                                             squeeze(grand_freq{2}.powspctrm(:,1,2,t)),'paired');
+        d(fi,t)           = computeCohen_d(squeeze(grand_freq{1}.powspctrm(:,1,1,t)),...
+                                             squeeze(grand_freq{2}.powspctrm(:,1,1,t)),'paired');
     end
-    
-    % --- test ptpr alpha/beta desync. --- %
-    cfg.frequency           = [9 11];
-    cfg.tail                = -1;
-    cfg.channel             = 'nc';
-    stat                    = ft_freqstatistics(cfg,grand_freq{1},grand_freq{2});
-      
-    % extract fdr corrected p-value
-    [~,~,p_fdr(fi,2,:)] = fdr(squeeze(stat.prob));
-    
-    % calculate cohen's d
-    for t = 1 : numel(grand_freq{1}.time)
-        d(fi,2,t)           = computeCohen_d(squeeze(grand_freq{1}.powspctrm(:,3,2,t)),...
-                                             squeeze(grand_freq{2}.powspctrm(:,3,2,t)),'paired');
-    end    
 end
 
 % --- read out significance --- %
