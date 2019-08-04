@@ -298,9 +298,45 @@ limits = {'xline':False,'yline':True,'xlim':[32,98],'ylim':[-.05,.05],
 # plot
 eeg_timeseriesplot(data,variables,limits,labels,colour['Red'],ax)
 
+# %% 
+# -- Prep Data -- #
+# load raincloud data
+dataEnc = pandas.read_csv(wdir + "data/fig2_atlEncTime.csv", delimiter=",",header=None)
+dataRet = pandas.read_csv(wdir + "data/fig2_atlRetTime.csv", delimiter=",",header=None)
+ddim = np.shape(dataEnc)
 
+# normalise signal
+signalEnc = np.reshape(dataEnc.values,np.prod(ddim))
+signalRet = np.reshape(dataRet.values,np.prod(ddim))
 
+# get raw data
+subj = np.repeat(np.arange(0,ddim[0]),[ddim[1]])
+time = np.tile(np.linspace(0,1.5,ddim[1]),ddim[0])
 
+# reformat data as frame
+dataEnc = pandas.DataFrame(data=np.rot90([signalEnc,subj,time]),columns=['signal','subj','time']) # reshape signal
+dataRet = pandas.DataFrame(data=np.rot90([signalRet,subj,time]),columns=['signal','subj','time']) # reshape signal
+
+# -- Plot -- #
+# define labels and variables
+labels = {'ylabel':'1/f Corrected Power\n(Rem. > Rog.; z)','xlabel':'Time (s)'}
+variables = {'x':'time','y':'signal'}
+limits = {'xline':False,'yline':True,'xlim':[0,1.5],'ylim':[-.4,.4],
+          'xticks':[0,0.5,1,1.5],'yticks':[-.4,0,.4],'xprecision':1,'yprecision':1}
+
+# plot encoding
+f,ax = pyplot.subplots(1,1)
+f.set_figheight(3.33/2.54) # convert size to inches
+f.set_figwidth(5.4/2.54)
+f.set_dpi(1000)
+eeg_timeseriesplot(dataEnc,variables,limits,labels,colour['Blue'],ax)
+
+# plot retrieval
+f,ax = pyplot.subplots(1,1)
+f.set_figheight(3.33/2.54) # convert size to inches
+f.set_figwidth(5.4/2.54)
+f.set_dpi(1000)
+eeg_timeseriesplot(dataRet,variables,limits,labels,colour['Blue'],ax)
 
 
 
