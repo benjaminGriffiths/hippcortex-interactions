@@ -73,46 +73,142 @@ def custom_rainplot(data,colour,axes,fontname,labels,ylim,offset,pvalue):
     axes.spines['left'].set_linewidth(1)
     
                
-def custom_timeseriesplot(data,variables,axes,colour,labels,xlim,ylim,xtick,legend,vertical,horizontal=False):
-    
-    sns.lineplot(x=variables['x'],
-             y=variables['y'],
-             data=data,
-             hue=variables['hue'],
-             hue_order=[1,0],
-             ci='sem',
-             palette=colour,
-             ax = axes,
-             linewidth=1)
+def eeg_timeseriesplot(data,variables,limits,labels,colour,ax):
+ 
+   # plot multicondition timeseries
+   if ('hue' in variables):
+      sns.lineplot(x=variables['x'],
+                   y=variables['y'],
+                   data=data,
+                   hue=variables['hue'],
+                   hue_order=[0,1],
+                   palette=colour,
+                   ax = ax,
+                   linewidth=1)
+      
+      # add leened
+      font = font_manager.FontProperties(family='Arial',weight='light',size=7)
+      ax.legend(prop=font)
+      ax.legend(labels['legend'],frameon=False,fontsize=7,bbox_to_anchor=(0., 1.02, 1., .102), 
+                  loc=3, ncol=2, mode="expand", borderaxespad=0.,prop=font)
+      
+   # plot single condition timeseries   
+   else:
+      sns.lineplot(x=variables['x'],
+                   y=variables['y'],
+                   data=data,
+                   palette=colour,
+                   ax = ax,
+                   linewidth=1)
+      #ax.get_legend().remove()
+               
+   # add horizontal line
+   if limits['xline']:
+      ax.axvline(x=0, linewidth = 1, color = [0,0,0], linestyle='--')
+   if limits['yline']:
+      ax.axhline(y=0, linewidth = 1, color = [0,0,0], linestyle='-')
+   
+   # set x scale limits
+   if ('xlim' in limits):   
+      
+      # set limits
+      ax.set_xlim(limits['xlim'])
+         
+   # set y scale limits
+   if ('ylim' in limits):  
+      
+      # calculate mean/sem
+      if ('hue' in variables):
+         for i in np.unique(data['condition']):
+            dat = data['signal'][data['condition']==i]
+            ns  = np.shape(np.unique(data['subj']))
+            dat = np.reshape(dat.values,(ns[0],int(np.shape(dat)[0]/ns[0])))
+            ymean = np.mean(dat,axis=0)
+            ysem = np.std(dat,axis=0) / np.sqrt(np.size(dat,axis=0))
+            ypos = max(ymean + ysem)
+            yneg = min(ymean - ysem)
+            yabs = max(np.abs([ypos,yneg]))
+            
+      else:
+         dat = data['signal']
+         ns  = np.shape(np.unique(data['subj']))
+         dat = np.reshape(dat.values,(ns[0],int(np.shape(dat)[0]/ns[0])))
+         ymean = np.mean(dat,axis=0)
+         ysem = np.std(dat,axis=0) / np.sqrt(np.size(dat,axis=0))
+         ypos = max(ymean + ysem)
+         yneg = min(ymean - ysem)
+         yabs = max(np.abs([ypos,yneg]))
 
-    if legend:
-        ax.legend(labels['legend'],frameon=False,fontsize=5,bbox_to_anchor=(0., 1.02, 1., .102), 
-                  loc=3, ncol=2, mode="expand", borderaxespad=0.)
-    else:
-        ax.get_legend().remove()
+      # if minmax request
+      if limits['ylim'] == 'minmax':
+         limits['ylim'] = [yneg-(yneg*.1),ypos+(ypos*.1)]
+         
+      # else if maxabs requested   
+      elif limits['ylim'] == 'maxabs':
+         limits['ylim'] = [yabs*-1.1,yabs*1.1]
+         
+      # else if zero to max requested   
+      elif limits['ylim'] == 'zeromax':
+         limits['ylim'] = [0,ypos*1.1]
+      
+   # set scale
+   ax.set_ylim(limits['ylim'])
+   
+   # set scaling factor
+   if ('xscale' in limits): 
+      ax.set_yscale(value=limits['xscale'])
+   if ('yscale' in limits): 
+      ax.set_yscale(value=limits['yscale'])
+   
+   # set x ticks
+   if ('xticks' in limits):
+      
+      # if single value specified, get linspaced ticks
+      if (type(limits['xticks']) == int) & ('xlim' in limits):
+         limits['xticks'] = np.linspace(limits['xlim'][0],limits['xlim'][1],limits['xticks'])
+      if type(limits['xticks']) == int:
+         limits['xticks'] = np.linspace(np.min(data[variables['x']]),np.max(data[variables['x']]),limits['xticks'])
+      
+      # set ticks
+      ax.set_xticks(limits['xticks'])
+      
+      # set ticks to precision
+      if ('xprecision' in limits):
+         limits['xticks'] = np.round(limits['xticks'],limits['xprecision'])      
+      
+      # set tick labels
+      ax.set_xticklabels(limits['xticks'],fontname='Arial',fontweight='light',fontsize=7)
+         
+   # set x ticks
+   if ('yticks' in limits):
+      
+      # if single value specified, get linspaced ticks
+      if (type(limits['yticks']) == int) & ('ylim' in limits):
+         limits['yticks'] = np.linspace(limits['ylim'][0],limits['ylim'][1],limits['yticks'])
+      elif (type(limits['yticks']) == int):      
+         limits['yticks'] = np.linspace(np.min(data[variables['y']]),np.max(data[variables['y']]),limits['yticks'])
         
-        
-    # add horizontal line
-    if vertical:
-        ax.axvline(x=0, linewidth = 1, color = [0,0,0], linestyle='--')
-    if horizontal:
-        ax.axhline(y=0, linewidth = 1, color = [0,0,0], linestyle='-')
-    
-    # aesthetics
-    ax.set_ylabel(labels['ylabel'],fontname='Calibri',fontsize=6,labelpad=0,fontweight='light')   # add Y axis label
-    ax.set_xlabel(labels['xlabel'],fontname='Calibri',fontsize=6,labelpad=3,fontweight='light')   # add Y axis label
-    ax.set_ylim(ylim)                  # set Y axis range to 0 -> 1
-    ax.set_xlim(xlim)                  # set Y axis range to 0 -> 1  
-    ax.set_yticks([ylim[0],0,ylim[1]])
-    ax.set_xticks(xtick)
-    ax.set_yticklabels([ylim[0],0,ylim[1]],fontname='Calibri',fontweight='light',fontsize=5)
-    ax.set_xticklabels(xtick,fontname='Calibri',fontweight='light',fontsize=5)
-    ax.tick_params(axis='both',          # change X tick parameters
-                       pad=3,
-                       length=2.5)
-    # change axes
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+      # set ticks
+      ax.set_yticks(limits['yticks'])
+         
+      # set ticks to precision
+      if ('yprecision' in limits):
+         limits['yticks'] = np.round(limits['yticks'],limits['yprecision'])   
+      
+      # set tick labels
+      ax.set_yticklabels(limits['yticks'],fontname='Arial',fontweight='light',fontsize=7)
+         
+   
+   # aesthetics
+   ax.set_ylabel(labels['ylabel'],fontname='Arial',fontsize=7,labelpad=2,fontweight='light')   # add Y axis label
+   ax.set_xlabel(labels['xlabel'],fontname='Arial',fontsize=7,labelpad=2,fontweight='light')   # add Y axis label
+   ax.tick_params(axis='both',          # change X tick parameters
+                      pad=3,
+                      length=2.5)
+   
+   # change axes
+   ax.spines['top'].set_visible(False)
+   ax.spines['right'].set_visible(False)
 
 # %% -- define key parameters ----------------------------------------------- #
 # get current directory
@@ -129,10 +225,14 @@ mpl.rcParams['ytick.color'] = [0,0,0]
 mpl.rcParams['lines.linewidth'] = 1
 mpl.rcParams['axes.linewidth'] = 1
 
-# get data
-data_fname = wdir + "data/fig2_resATL.csv"
+# get colour dict
+RdBu = sns.color_palette("RdBu_r", 10)
+colour = {'Red':RdBu[8],
+          'Blue':RdBu[1]}
 
-# load raincloud data
+# %% -- Figure 2a ----------------------------------------------------------- #
+# -- Prep Data -- #
+# load data data
 dataATL = pandas.read_csv(wdir + "data/fig2_resATL.csv", delimiter=",",header=None)
 dataHipp = pandas.read_csv(wdir + "data/fig2_resHipp.csv", delimiter=",",header=None)
 ddim = np.shape(dataATL)
@@ -150,155 +250,53 @@ condition = np.hstack(np.array([np.zeros(np.prod(ddim)),np.ones(np.prod(ddim))])
 # reformat data as frame
 data = pandas.DataFrame(data=np.rot90([signal,subj,freq,condition]),columns=['signal','subj','freq','condition']) # reshape signal
 
+# -- Plot -- #
 # create figure
 f,ax = pyplot.subplots(1,1)
-f.set_figheight(3.33/2.54) # 4inches 
-f.set_figwidth(5.4/2.54) # 12inches
+f.set_figheight(3.33/2.54) # convert size to inches
+f.set_figwidth(5.4/2.54)
 f.set_dpi(1000)
 
-# define colour scheme
-colour = sns.color_palette("Paired")
-colour = [colour[1],colour[5]]
-colour = sns.color_palette("RdBu_r", 10)
-colour = [colour[1],colour[8]]
+# define labels and variables
+labels = {'legend':['ATL','Hippocampus'],'ylabel':'1/f Corrected Power (z)','xlabel':'Frequency (Hz.)'}
+variables = {'x':'freq','y':'signal','hue':'condition'}
+limits = {'xline':False,'yline':False,'xlim':[1.5,64],'ylim':[-1,4],
+          'xticks':[4,8,16,32,64],'yticks':[-2,0,2,4],'xprecision':1,'yprecision':1}
+
+# plot
+eeg_timeseriesplot(data,variables,limits,labels,[colour['Red'],colour['Blue']],ax)
+
+# %% -- Figure 2b ----------------------------------------------------------- #
+# -- Prep Data -- #
+# load raincloud data
+data = pandas.read_csv(wdir + "data/fig2_encRetGammaSpecHits.csv", delimiter=",",header=None)
+ddim = np.shape(data)
+
+# normalise signal
+signal = np.reshape(data.values,np.prod(ddim))
+
+# get raw data
+subj = np.repeat(np.arange(0,ddim[0]),[ddim[1]])
+freq = np.tile(np.linspace(30,100,ddim[1]),ddim[0])
+
+# reformat data as frame
+data = pandas.DataFrame(data=np.rot90([signal,subj,freq]),columns=['signal','subj','freq']) # reshape signal
+
+# -- Plot -- #
+# create figure
+f,ax = pyplot.subplots(1,1)
+f.set_figheight(3.33/2.54) # convert size to inches
+f.set_figwidth(5.4/2.54)
+f.set_dpi(1000)
 
 # define labels and variables
-labels = {'legend':['ATL','Hippocampus'],
-          'ylabel':'1/f Corrected Power (z)',
-          'xlabel':'Frequency (Hz.)'}
+labels = {'ylabel':'1/f Corrected Power\n(Enc. > Ret.; a.u.)','xlabel':'Frequency (Hz.)'}
+variables = {'x':'freq','y':'signal'}
+limits = {'xline':False,'yline':True,'xlim':[32,98],'ylim':[-.05,.05],
+          'xticks':np.arange(40,100,10),'yticks':[-.05,0,.05],'xprecision':3,'yprecision':3}
 
-variables = {'x':'freq',
-             'y':'signal',
-             'hue':'condition'}
-
-limits = {'xline':False,
-          'yline':False,
-          'xlim':[1.5,64],
-          'ylim':[-1,4],
-          'xticks':[4,8,16,32,64],
-          'yticks':[-2,0,2,4],
-          'xprecision':1,
-          'yprecision':1}
-
-# plot timeseries
-sns.lineplot(x=variables['x'],
-             y=variables['y'],
-             data=data,
-             hue=variables['hue'],
-             hue_order=[0,1],
-             palette=colour,
-             ax = ax,
-             linewidth=1)
-
-# define legend
-if ('hue' in variables):
-   
-   font = font_manager.FontProperties(family='Arial',weight='light',size=7)
-   ax.legend(prop=font)
-   ax.legend(labels['legend'],frameon=False,fontsize=7,bbox_to_anchor=(0., 1.02, 1., .102), 
-               loc=3, ncol=2, mode="expand", borderaxespad=0.,prop=font)
-else:
-    ax.get_legend().remove()
-     
-     
-# add horizontal line
-if limits['xline']:
-   ax.axvline(x=0, linewidth = 1, color = [0,0,0], linestyle='--')
-if limits['yline']:
-   ax.axhline(y=0, linewidth = 1, color = [0,0,0], linestyle='-')
-
-# set x scale limits
-if ('xlim' in limits):   
-   
-   # set limits
-   ax.set_xlim(limits['xlim'])
-      
-# set y scale limits
-if ('ylim' in limits):  
-   
-   # calculate mean/sem
-   dat = data['signal'][data['condition']==0]
-   ns  = np.shape(np.unique(data['subj']))
-   dat = np.reshape(dat.values,(ns[0],int(np.shape(dat)[0]/ns[0])))
-   ymean = np.mean(dat,axis=0)
-   ysem = np.std(dat,axis=0) / np.sqrt(np.size(dat,axis=0))
-   ypos = max(ymean + ysem)
-   yneg = min(ymean - ysem)
-   yabs = max(np.abs([ypos,yneg]))
-   
-   # if minmax request
-   if limits['ylim'] == 'minmax':
-      limits['ylim'] = [yneg-(yneg*.1),ypos+(ypos*.1)]
-      
-   # else if maxabs requested   
-   elif limits['ylim'] == 'maxabs':
-      limits['ylim'] = [yabs*-1.1,yabs*1.1]
-      
-   # else if zero to max requested   
-   elif limits['ylim'] == 'zeromax':
-      limits['ylim'] = [0,ypos*1.1]
-      
-   # set scale
-   ax.set_ylim(limits['ylim'])
-
-# set scaling factor
-if ('xscale' in limits): 
-   ax.set_yscale(value=limits['xscale'])
-if ('yscale' in limits): 
-   ax.set_yscale(value=limits['yscale'])
-
-# set x ticks
-if ('xticks' in limits):
-   
-   # if single value specified, get linspaced ticks
-   if (type(limits['xticks']) == int) & ('xlim' in limits):
-      limits['xticks'] = np.linspace(limits['xlim'][0],limits['xlim'][1],limits['xticks'])
-   if type(limits['xticks']) == int:
-      limits['xticks'] = np.linspace(np.min(data[variables['x']]),np.max(data[variables['x']]),limits['xticks'])
-   
-   # set ticks
-   ax.set_xticks(limits['xticks'])
-   
-   # set ticks to precision
-   if ('xprecision' in limits):
-      limits['xticks'] = np.round(limits['xticks'],limits['xprecision'])      
-   
-   # set tick labels
-   ax.set_xticklabels(limits['xticks'],fontname='Arial',fontweight='light',fontsize=7)
-      
-# set x ticks
-if ('yticks' in limits):
-   
-   # if single value specified, get linspaced ticks
-   if (type(limits['yticks']) == int) & ('ylim' in limits):
-      limits['yticks'] = np.linspace(limits['ylim'][0],limits['ylim'][1],limits['yticks'])
-   elif (type(limits['yticks']) == int):      
-      limits['yticks'] = np.linspace(np.min(data[variables['y']]),np.max(data[variables['y']]),limits['yticks'])
-     
-   # set ticks
-   ax.set_yticks(limits['yticks'])
-      
-   # set ticks to precision
-   if ('yprecision' in limits):
-      limits['yticks'] = np.round(limits['yticks'],limits['yprecision'])   
-   
-   # set tick labels
-   ax.set_yticklabels(limits['yticks'],fontname='Arial',fontweight='light',fontsize=7)
-      
-
-# aesthetics
-ax.set_ylabel(labels['ylabel'],fontname='Arial',fontsize=7,labelpad=2,fontweight='light')   # add Y axis label
-ax.set_xlabel(labels['xlabel'],fontname='Arial',fontsize=7,labelpad=2,fontweight='light')   # add Y axis label
-ax.tick_params(axis='both',          # change X tick parameters
-                   pad=3,
-                   length=2.5)
-
-# change axes
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-
-
-
+# plot
+eeg_timeseriesplot(data,variables,limits,labels,colour['Red'],ax)
 
 
 
