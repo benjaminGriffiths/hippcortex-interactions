@@ -113,9 +113,6 @@ for subj = 1 : nsubj
 end
     
 %% Calculate Cross-Correlation
-% predefine bad participant
-bad_pp = false(nsubj,1);
-
 % cycle through every participant
 for subj = 1 : nsubj
     
@@ -278,9 +275,6 @@ for di = 1 : numel(grand_hits)
     cfg.toi             = [grand_hits{di}.time(1) grand_hits{di}.time(end)];
     grand_hits{di}      = sd_downsample_freq(cfg,grand_hits{di});
     grand_misses{di}    = sd_downsample_freq(cfg,grand_misses{di});
-    
-    diff = squeeze(grand_hits{di}.powspctrm(:,:,3,:) - grand_misses{di}.powspctrm(:,:,3,:));
-    plot(grand_hits{di}.time,diff)
     
     % create design matrix
     design      = [];

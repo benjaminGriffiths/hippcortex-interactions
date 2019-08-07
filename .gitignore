@@ -1,3 +1,7 @@
 **.asv
 **.mat
+**.py
 data
+extract_figure_data.m
+plot_figure1
+plot_figure1.m
