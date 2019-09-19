@@ -568,8 +568,8 @@ f.set_dpi(1000)
 # define labels and variables
 labels = {'ylabel':'1/f Corrected Power\n(Enc. > Ret.; a.u.)','xlabel':'Frequency (Hz.)'}
 variables = {'x':'freq','y':'signal'}
-limits = {'xline':False,'yline':True,'xlim':[30,100],'ylim':[-.06,.06],
-          'xticks':np.arange(40,100,10),'yticks':[-.06,0,.06],'xprecision':3,'yprecision':3}
+limits = {'xline':False,'yline':True,'xlim':[30,100],'ylim':[-.08,.08],
+          'xticks':np.arange(40,100,10),'yticks':[-.08,0,.08],'xprecision':3,'yprecision':3}
 
 # plot
 eeg_timeseriesplot(data,variables,limits,labels,colpal['Red'],ax,[[40,50,0.02],[60,70,0.001],[70,80,0.02]])
